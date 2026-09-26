@@ -1,0 +1,36 @@
+# Render blueprint. Deploy the backend as a Docker web service (Chromium for
+# Playwright). Free-tier instances sleep; cron-job.org wakes + drives them via
+# POST /api/scrape/run every 2 hours.
+services:
+  - type: web
+    name: ine-price-tracker-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 8080
+      - key: STORE_BASE_URL
+        value: https://demo.inelabteamdev.com
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+      - key: SCRAPE_CONCURRENCY
+        value: 1
+      - key: SCRAPE_RETRIES
+        value: 4
+      # Optional email alerts
+      - key: SENDGRID_API_KEY
+        sync: false
+      - key: ALERT_EMAIL_TO
+        sync: false

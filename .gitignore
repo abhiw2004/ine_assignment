@@ -1,0 +1,32 @@
+# dependencies
+node_modules/
+**/node_modules/
+
+# build output
+dist/
+**/dist/
+build/
+
+# env + secrets
+.env
+.env.*
+!.env.example
+
+# logs
+*.log
+logs/
+
+# playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
+# editor / os
+.DS_Store
+.idea/
+.vscode/
+*.local
+
+# scratch
+_tmp*/

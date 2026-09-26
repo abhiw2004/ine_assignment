@@ -1,0 +1,35 @@
+{
+  "name": "price-tracker-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Backend + scraper for the INE Product Price Tracker assignment",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "scrape": "node src/jobs/runScrape.js",
+    "scrape:force": "node src/jobs/runScrape.js --force",
+    "scrape:loop": "node src/jobs/runScrape.js --loop",
+    "scrape:adhoc": "node src/jobs/runScrape.js --adhoc",
+    "scrape:headed": "cross-env SCRAPE_HEADED=true SCRAPE_SLOW_MO=120 node src/jobs/runScrape.js --adhoc",
+    "scrape:headed:one": "cross-env SCRAPE_HEADED=true SCRAPE_SLOW_MO=120 node src/jobs/runScrape.js --adhoc --id",
+    "scrape:headed:scheduled": "cross-env SCRAPE_HEADED=true node src/jobs/runScrape.js",
+    "probe": "node src/scraper/probe.js",
+    "postinstall": "playwright install --with-deps chromium || playwright install chromium"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "cheerio": "^1.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "playwright": "^1.47.2"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3"
+  }
+}
