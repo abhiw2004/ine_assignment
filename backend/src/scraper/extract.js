@@ -67,6 +67,21 @@ export async function driveAndExtract(page, { url, optionLabel = null, navTimeou
       if (await cookie.count()) await cookie.click({ timeout: 1500 });
     } catch { /* non-fatal */ }
 
+    // 3b) guarantee the consent overlay is actually gone before we interact
+    // with the panel. Under load / slow cold starts the .consent-scrim can
+    // linger (or re-render) after the accept click and then intercepts pointer
+    // events, swallowing the "Check today's price" click and failing the run.
+    try {
+      const scrim = page.locator('.consent-scrim').first();
+      if (await scrim.count()) {
+        await scrim.waitFor({ state: 'detached', timeout: 3000 }).catch(() => {});
+      }
+      // if it still lingers (stalled animation / re-render), remove it outright
+      await page.evaluate(() => {
+        document.querySelectorAll('.consent-scrim').forEach((el) => el.remove());
+      });
+    } catch { /* non-fatal */ }
+
     // 4) select the requested option (resets phase -> idle) ----------------
     if (optionLabel) {
       const chip = page

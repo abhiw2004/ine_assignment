@@ -20,17 +20,34 @@ function cronAuthorized(req) {
 }
 
 // POST /api/scrape/run -> the scheduled entry point hit by cron-job.org (every 2h)
-router.post('/run', async (req, res, next) => {
+//
+// Fire-and-forget on purpose. A full pass can take several minutes on the free
+// tier (cold start + headless Chromium + retries against a deliberately flaky,
+// rate-limiting store), which blows past cron-job.org's timeout and its
+// response-size cap ("Timeout" / "Response data too big"). So we acknowledge
+// immediately with a tiny 202 body and run the pass in the background. Every
+// outcome is persisted to Supabase (price_history + scrape_logs) and shown on
+// the dashboard, so cron-job.org only needs to trigger the run. Pair this with a
+// keep-warm ping (GET /health every 5 min) so the instance stays up while the
+// background pass runs.
+router.post('/run', (req, res) => {
   if (!cronAuthorized(req)) {
     return res.status(401).json({ error: 'unauthorized' });
   }
-  try {
-    const force = req.query.force === 'true' || req.body?.force === true;
-    const ids = Array.isArray(req.body?.ids) ? req.body.ids : null;
-    // Respond fast for very large passes? Keep synchronous so cron sees the result.
-    const summary = await runScheduledScrape({ ids, force });
-    res.json(summary);
-  } catch (err) { next(err); }
+  const force = req.query.force === 'true' || req.body?.force === true;
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids : null;
+
+  res.status(202).json({ ok: true, accepted: true, at: new Date().toISOString() });
+
+  runScheduledScrape({ ids, force })
+    .then((summary) => logger.info('background scheduled scrape finished', {
+      considered: summary.considered,
+      success: summary.success,
+      retried: summary.retried,
+      failed: summary.failed,
+      structureChanged: summary.structureChanged,
+    }))
+    .catch((err) => logger.error(`background scheduled scrape failed: ${err.message}`));
 });
 
 // GET /api/scrape/config -> non-secret scheduling info for the dashboard
