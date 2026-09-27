@@ -1,6 +1,15 @@
 import { createClient } from '@supabase/supabase-js';
+import WebSocket from 'ws';
 import { config, hasDb } from '../config.js';
 import { logger } from '../util/logger.js';
+
+// Node 22+ ships a native global WebSocket; older runtimes (e.g. the Node 20 in
+// our Playwright Docker image on Render) do not. @supabase/supabase-js builds its
+// realtime client eagerly and requires a WebSocket implementation, so polyfill the
+// global when it is missing. Node 22+ keeps its native implementation untouched.
+if (typeof globalThis.WebSocket === 'undefined') {
+  globalThis.WebSocket = WebSocket;
+}
 
 let supabase = null;
 
