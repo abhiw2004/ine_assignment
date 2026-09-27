@@ -2,7 +2,7 @@ import { config } from '../config.js';
 import { logger } from '../util/logger.js';
 import { scrapeOne, closeBrowser } from '../scraper/index.js';
 import {
-  listTracked, insertHistory, insertLog, updateTracked, insertAlert,
+  listTracked, getTracked, insertHistory, insertLog, updateTracked, insertAlert,
 } from '../db/trackedRepo.js';
 import { detectAndRecordAlerts } from './alertService.js';
 
@@ -32,6 +32,25 @@ async function pool(items, worker, concurrency) {
 }
 
 /**
+ * Update the dashboard snapshot only if this run finished AFTER the stored one.
+ * Prevents an old slow run overwriting a newer fast run when cron + manual
+ * clicks overlap (Render free tier + single Chromium = they collide).
+ */
+async function safeUpdateSnapshot(id, patch, finishedAt) {
+  try {
+    const current = await getTracked(id);
+    if (current?.last_scraped_at && new Date(finishedAt) <= new Date(current.last_scraped_at)) {
+      logger.warn(`stale run ignored for ${id}: finished ${finishedAt} <= stored ${current.last_scraped_at}`);
+      return current;
+    }
+    return await updateTracked(id, { ...patch, last_scraped_at: finishedAt });
+  } catch (e) {
+    logger.warn(`safeUpdateSnapshot fallback (unconditional) for ${id}: ${e.message}`);
+    return await updateTracked(id, { ...patch, last_scraped_at: finishedAt }).catch(() => null);
+  }
+}
+
+/**
  * Scrape a single tracked row, persist honestly, and update its snapshot.
  * - success/retried -> write price_history + scrape_logs, update snapshot, alerts
  * - failed          -> write scrape_logs ONLY (null price/stock); never store bad data
@@ -44,6 +63,7 @@ export async function scrapeTrackedRow(t) {
   };
   const startedAt = new Date().toISOString();
   const r = await scrapeOne(target);
+  const finishedAt = new Date().toISOString();
 
   if (r.outcome === 'failed') {
     const isStructure = r.error && r.error.kind === 'structure';
@@ -64,9 +84,9 @@ export async function scrapeTrackedRow(t) {
         kind: 'structure_changed',
         message: `Page structure changed / offer panel missing for ${t.name} (${t.option_label}); scrape failed.`,
       }).catch(() => {});
-      await updateTracked(t.id, { last_scraped_at: startedAt, last_outcome: 'failed' }).catch(() => {});
+      await safeUpdateSnapshot(t.id, { last_outcome: 'failed' }, finishedAt).catch(() => {});
     } else {
-      await updateTracked(t.id, { last_scraped_at: startedAt, last_outcome: 'failed' }).catch(() => {});
+      await safeUpdateSnapshot(t.id, { last_outcome: 'failed' }, finishedAt).catch(() => {});
     }
     logger.warn(`stored FAILED log for ${t.name} (${t.option_label}): ${r.error?.message}`);
     return { tracked: t, result: r, stored: false, structureChanged: isStructure };
@@ -75,7 +95,7 @@ export async function scrapeTrackedRow(t) {
   const d = r.data;
   const structureChanged = !!(t.structure_fp && d.fingerprint && t.structure_fp !== d.fingerprint);
 
-  await insertHistory(t.id, { ...d, scrapedAt: startedAt });
+  await insertHistory(t.id, { ...d, scrapedAt: finishedAt });
   await insertLog(t.id, {
     outcome: r.outcome,
     attempts: r.attempts,
@@ -99,14 +119,13 @@ export async function scrapeTrackedRow(t) {
     }).catch(() => {});
   }
 
-  await updateTracked(t.id, {
+  await safeUpdateSnapshot(t.id, {
     last_price: d.price,
     last_stock: d.stock,
     last_in_stock: d.inStock,
-    last_scraped_at: startedAt,
     last_outcome: r.outcome,
     structure_fp: d.fingerprint,
-  });
+  }, finishedAt);
 
   return { tracked: t, result: r, stored: true, structureChanged };
 }
